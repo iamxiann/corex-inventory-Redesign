@@ -11,17 +11,19 @@
         usable = true,
         image = 'item_name.png',
         prop = 'prop_name',
+        degrade = 1440,             -- optional: durability duration in minutes
+        decay = true,               -- optional: remove item when durability reaches 0
         rarity = 'common'           -- common/uncommon/rare/epic/legendary/mythic
     }
 ]]
 
 Rarity = {
     common = {label = 'COMMON', color = '#8b949e', rgb = {139, 148, 158}},
-    uncommon = {label = 'UNCOMMON', color = '#3fb950', rgb = {63, 185, 80}},
-    rare = {label = 'RARE', color = '#58a6ff', rgb = {88, 166, 255}},
+    uncommon = {label = 'UNCOMMON', color = '#34d058', rgb = {52, 208, 88}},
+    rare = {label = 'RARE', color = '#2f81f7', rgb = {47, 129, 247}},
     epic = {label = 'EPIC', color = '#a371f7', rgb = {163, 113, 247}},
-    legendary = {label = 'LEGENDARY', color = '#d29922', rgb = {210, 153, 34}},
-    mythic = {label = 'MYTHIC', color = '#f85149', rgb = {248, 81, 73}}
+    legendary = {label = 'LEGENDARY', color = '#f2cc60', rgb = {242, 204, 96}},
+    mythic = {label = 'MYTHIC', color = '#b3001b', rgb = {179, 0, 27}}
 }
 
 Items = {
@@ -35,15 +37,58 @@ Items = {
         image = 'coin.png',
         rarity = 'common'
     },
-['revive_kit'] = {
-        label    = 'Revive Kit',
+    ['revive_kit'] = {
+            label    = 'Revive Kit',
+            weight   = 0.5,
+            size     = { w = 1, h = 1 },
+            stackable = true,
+            maxStack = 3,
+            usable   = true,
+            image    = 'revive_kit.png',
+            rarity   = 'rare',
+        },
+    ['radio'] = {
+        label    = 'Radio',
         weight   = 0.5,
         size     = { w = 1, h = 1 },
         stackable = true,
         maxStack = 3,
         usable   = true,
-        image    = 'revive_kit.png',
-        rarity   = 'rare',
+        image    = 'radio.png',
+        rarity   = 'common',
+    },
+    ['backpack_small'] = {
+        label = 'Small Backpack',
+        weight = 0.8,
+        size = {w = 2, h = 2},
+        stackable = false,
+        usable = true,
+        image = 'backpack_small.png',
+        prop = 'p_michael_backpack_s',
+        rarity = 'uncommon',
+        backpack = true
+    },
+    ['backpack_medium'] = {
+        label = 'Medium Backpack',
+        weight = 1.2,
+        size = {w = 2, h = 2},
+        stackable = false,
+        usable = true,
+        image = 'backpack_medium.png',
+        prop = 'p_michael_backpack_s',
+        rarity = 'rare',
+        backpack = true
+    },
+    ['backpack_large'] = {
+        label = 'Large Backpack',
+        weight = 1.8,
+        size = {w = 2, h = 3},
+        stackable = false,
+        usable = true,
+        image = 'backpack_large.png',
+        prop = 'p_michael_backpack_s',
+        rarity = 'epic',
+        backpack = true
     },
 
     -- =====================
@@ -312,6 +357,17 @@ Items = {
         image = 'shotgun_ammo.png',
         rarity = 'common'
     },
+['sniper_ammo'] = {
+        label = 'Sniper Ammo',
+        weight = 0.2,
+        size = {w = 1, h = 1},
+        stackable = true,
+        maxStack = 20,
+        usable = false,
+        image = 'smg_ammo.png',
+        rarity = 'mythic'
+    },
+
 
     -- =====================
     -- CONSUMABLES
@@ -371,6 +427,8 @@ Items = {
         usable = true,
         image = 'raw_beef.png',
         rarity = 'common',
+        degrade = 120,
+        decay = true,
         survival = { hunger = 15, infectionRisk = 0.10 }
     },
 ['raw_pork'] = {
@@ -382,6 +440,8 @@ Items = {
         usable = true,
         image = 'raw_pork.png',
         rarity = 'common',
+        degrade = 120,
+        decay = true,
         survival = { hunger = 15, infectionRisk = 0.10 }
     },
 ['raw_chicken'] = {
@@ -393,6 +453,8 @@ Items = {
         usable = true,
         image = 'raw_chicken.png',
         rarity = 'common',
+        degrade = 120,
+        decay = true,
         survival = { hunger = 15, infectionRisk = 0.10 }
     },
 
@@ -405,6 +467,8 @@ Items = {
         usable = true,
         image = 'cooked_beef.png',
         rarity = 'uncommon',
+        degrade = 240,
+        decay = true,
         survival = { hunger = 35 }
     },
     ['cooked_pork'] = {
@@ -416,6 +480,8 @@ Items = {
         usable = true,
         image = 'cooked_pork.png',
         rarity = 'uncommon',
+        degrade = 240,
+        decay = true,
         survival = { hunger = 35 }
     },
     ['cooked_chicken'] = {
@@ -427,6 +493,8 @@ Items = {
         usable = true,
         image = 'cooked_chicken.png',
         rarity = 'uncommon',
+        degrade = 240,
+        decay = true,
         survival = { hunger = 35 }
     },
 
@@ -508,12 +576,43 @@ Items = {
     -- =====================
     -- CRAFTING MATERIALS
     -- =====================
+    ['lockpick'] = {
+        label    = 'Lockpick',
+        weight   = 0.5,
+        size     = { w = 1, h = 1 },
+        stackable = true,
+        maxStack = 10,
+        usable   = false,
+        image    = 'lockpick.png',
+        rarity   = 'common',
+    },
+
+    ['broken_phone'] = {
+        label    = 'Broken Phone',
+        weight   = 0.5,
+        size     = { w = 1, h = 1 },
+        stackable = true,
+        maxStack = 99,
+        usable   = false,
+        image    = 'broken_phone.png',
+        rarity   = 'common',
+    },
+    ['broken_radio'] = {
+        label    = 'Broken Radio',
+        weight   = 0.5,
+        size     = { w = 1, h = 1 },
+        stackable = true,
+        maxStack = 99,
+        usable   = false,
+        image    = 'broken_radio.png',
+        rarity   = 'common',
+    },
     ['cloth'] = {
         label = 'Cloth',
         weight = 0.1,
         size = {w = 1, h = 1},
         stackable = true,
-        maxStack = 30,
+        maxStack = 99,
         usable = false,
         image = 'cloth.png',
         rarity = 'common'
@@ -523,7 +622,7 @@ Items = {
         weight = 0.1,
         size = {w = 1, h = 1},
         stackable = true,
-        maxStack = 20,
+        maxStack = 99,
         usable = false,
         image = 'herbs.png',
         rarity = 'uncommon'
@@ -533,9 +632,29 @@ Items = {
         weight = 0.6,
         size = {w = 1, h = 1},
         stackable = true,
-        maxStack = 15,
+        maxStack = 99,
         usable = false,
         image = 'scrap_metal.png',
+        rarity = 'common'
+    },
+    ['plastic'] = {
+        label = 'Plastic',
+        weight = 0.6,
+        size = {w = 1, h = 1},
+        stackable = true,
+        maxStack = 99,
+        usable = false,
+        image = 'plastic.png',
+        rarity = 'common'
+    },
+    ['iron'] = {
+        label = 'Iron',
+        weight = 0.6,
+        size = {w = 1, h = 1},
+        stackable = true,
+        maxStack = 99,
+        usable = false,
+        image = 'iron.png',
         rarity = 'common'
     },
     ['chemicals'] = {
@@ -543,7 +662,7 @@ Items = {
         weight = 0.3,
         size = {w = 1, h = 1},
         stackable = true,
-        maxStack = 10,
+        maxStack = 99,
         usable = false,
         image = 'chemicals.png',
         rarity = 'rare'
@@ -553,7 +672,7 @@ Items = {
         weight = 0.2,
         size = {w = 1, h = 1},
         stackable = true,
-        maxStack = 10,
+        maxStack = 99,
         usable = false,
         image = 'duct_tape.png',
         rarity = 'uncommon'
@@ -598,4 +717,30 @@ Items = {
         image = 'default.png',
         rarity = 'rare'
     },
+
+-- VEHICLE ITEMS
+	['scorpion_bike'] = {
+        label = 'Scorpion',
+        weight = 5.0,
+        size = {w = 2, h = 2},
+        stackable = false,
+        usable = true,
+        degrade = 1440,             -- optional: durability duration in minutes
+        decay = true,               -- optional: remove item when durability reaches 0
+        image = 'scorpion_bike.png',
+        rarity = 'legendary'
+    	},
+	['banshee3_car'] = {
+        label = 'Banshee 3',
+        weight = 10.0,
+        size = {w = 3, h = 2},
+        stackable = false,
+        usable = true,
+        degrade = 1440,             -- optional: durability duration in minutes
+        decay = true,               -- optional: remove item when durability reaches 0
+        image = 'banshee3_car.png',
+        rarity = 'mythic'
+    	},
+
+
 }
