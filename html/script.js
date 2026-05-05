@@ -19,6 +19,8 @@ let dragOffsetX = 0;
 let dragOffsetY = 0;
 let dragPreview = null;
 let isActionPending = false;
+let dropGridCols = CONFIG.gridCols;
+let dropGridRows = CONFIG.gridRows;
 
 // Persisted UI state (so sort/search survive inventory updates)
 window.__invSearchQuery = window.__invSearchQuery || '';
@@ -129,7 +131,7 @@ function updateItemInfo(item) {
 
 function initializeUI() {
     renderSlots(playerGrid, CONFIG.gridCols, CONFIG.gridRows);
-    renderSlots(dropGrid, CONFIG.gridCols, CONFIG.gridRows);
+    renderSlots(dropGrid, dropGridCols, dropGridRows);
     renderWeightSegments();
     createDragPreview();
 }
@@ -191,8 +193,10 @@ function updateWeightBar(current, max) {
     document.getElementById('max-weight').textContent = Math.round(max);
 }
 
-function checkCollision(x, y, w, h, items, excludeSlot) {
-    if (x < 1 || y < 1 || x + w - 1 > CONFIG.gridCols || y + h - 1 > CONFIG.gridRows) {
+function checkCollision(x, y, w, h, items, excludeSlot, gridConfig) {
+    const cols = gridConfig?.cols || CONFIG.gridCols;
+    const rows = gridConfig?.rows || CONFIG.gridRows;
+    if (x < 1 || y < 1 || x + w - 1 > cols || y + h - 1 > rows) {
         return true;
     }
 
@@ -526,6 +530,14 @@ function openInventory(data) {
         CONFIG.gridRows = data.grid.h || 10;
     }
 
+    if (data.backpackGrid) {
+        dropGridCols = data.backpackGrid.w || CONFIG.gridCols;
+        dropGridRows = data.backpackGrid.h || CONFIG.gridRows;
+    } else {
+        dropGridCols = CONFIG.gridCols;
+        dropGridRows = CONFIG.gridRows;
+    }
+
     if (data.groundItems) {
         groundItems = data.groundItems;
     }
@@ -543,6 +555,12 @@ function openInventory(data) {
         shopMoney.classList.remove('hidden');
         playerMoneySpan.textContent = '$' + (data.playerMoney || 0);
         dropGrid.classList.add('is-shop');
+    } else if (data.isBackpack) {
+        dropTitle.textContent = data.stashName || 'Backpack';
+        dropIcon.className = 'fa-solid fa-suitcase hex-inner-icon';
+        dropHint.classList.add('hidden');
+        shopMoney.classList.add('hidden');
+        dropGrid.classList.remove('is-shop');
     } else if (data.isStash) {
         dropTitle.textContent = data.stashName || 'Storage';
         dropIcon.className = 'fa-solid fa-box-archive hex-inner-icon';
@@ -571,6 +589,15 @@ function updateInventory(data) {
     inventoryData = data;
     if (data.itemsData) itemsData = data.itemsData;
     if (data.groundItems) groundItems = data.groundItems;
+    if (data.grid) {
+        CONFIG.gridCols = data.grid.w || CONFIG.gridCols;
+        CONFIG.gridRows = data.grid.h || CONFIG.gridRows;
+    }
+    if (data.backpackGrid) {
+        dropGridCols = data.backpackGrid.w || dropGridCols;
+        dropGridRows = data.backpackGrid.h || dropGridRows;
+        renderSlots(dropGrid, dropGridCols, dropGridRows);
+    }
 
     // Store items globally so hotbar can update even when inventory is closed
     if (data && data.items) {
@@ -893,6 +920,8 @@ function createItemElement(item, source, quickslotNum) {
     const displaySize = item.isShopItem && item.displaySize ? item.displaySize : (itemDef.size || { w: 1, h: 1 });
     const w = displaySize.w || 1;
     const h = displaySize.h || 1;
+    const gridCols = source === 'ground' ? dropGridCols : CONFIG.gridCols;
+    const gridRows = source === 'ground' ? dropGridRows : CONFIG.gridRows;
     const category = itemDef.category || '';
     const isAmmoItem = item.name.toLowerCase().includes('ammo') || (!!itemDef.maxStack && !itemDef.ammoType && !category);
     const itemTypeClass = isAmmoItem ? 'item-type-ammo' : 'item-type-weapon';
@@ -922,8 +951,8 @@ function createItemElement(item, source, quickslotNum) {
         }
     }
 
-    const x = Math.max(1, Math.min(item.x || 1, CONFIG.gridCols));
-    const y = Math.max(1, Math.min(item.y || 1, CONFIG.gridRows));
+    const x = Math.max(1, Math.min(item.x || 1, gridCols));
+    const y = Math.max(1, Math.min(item.y || 1, gridRows));
 
     const left = (x - 1) * (CONFIG.cellSize + CONFIG.gapSize);
     const top = (y - 1) * (CONFIG.cellSize + CONFIG.gapSize);
@@ -1232,7 +1261,7 @@ function handleDragEnd(e) {
             }).catch(() => {});
         };
         if (inventoryData && inventoryData.isStash) {
-            if (checkCollision(slotSnap.x, slotSnap.y, size.w, size.h, inventoryData?.groundItems || [])) {
+            if (checkCollision(slotSnap.x, slotSnap.y, size.w, size.h, inventoryData?.groundItems || [], null, { cols: dropGridCols, rows: dropGridRows })) {
                 cancelDrag();
                 return;
             }
