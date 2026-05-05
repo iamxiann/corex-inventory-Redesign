@@ -1,3 +1,17 @@
+--[[
+    COREX Inventory - Server Side (v2.1 - BUGFIX)
+    Tetris Grid System with Ground Items Support
+    Functional Lua | No OOP | Zombie Survival Optimized
+
+    CHANGELOG v2.1:
+    [FIX-1] AddItem: partial stacking + maxStack respected everywhere
+    [FIX-2] PickupItem: tries to merge into existing stack before placing new slot
+    [FIX-3] GiveItem: tries to merge into existing target stack before placing new slot
+    [FIX-4] mergeItem / mergeGroundItem: already correct, kept as-is
+    [FIX-5] RemoveItem: drains across multiple stacks (partial remove)
+    [SEC-1]  All NetEvent inputs strictly validated
+]]
+
 local Inventories = {}
 local DroppedItems = {}
 local PendingVehiclePurchases = {}
@@ -162,6 +176,80 @@ local function GetAllItemsData()
     for k, v in pairs(Ammo    or {}) do all[k] = v end
     return all
 end
+
+local Backpacks = {}
+
+local function NormalizeBackpackWeight(maxWeight)
+    maxWeight = tonumber(maxWeight) or 0
+    if maxWeight > 200 then
+        return maxWeight / 1000.0
+    end
+    return maxWeight
+end
+
+local function ProcessBackpackFilter(list)
+    if type(list) ~= 'table' then return nil end
+
+    local set = {}
+    for key, value in pairs(list) do
+        if type(key) == 'number' then
+            set[value] = true
+        elseif value == true then
+            set[key] = true
+        end
+    end
+
+    return set
+end
+
+local function SetBackpackProperties(itemName, properties)
+    if type(itemName) ~= 'string' or type(properties) ~= 'table' then return end
+
+    local blacklist = ProcessBackpackFilter(properties.blacklist) or {}
+    for name in pairs(Backpacks) do
+        blacklist[name] = true
+    end
+
+    for name, backpack in pairs(Backpacks) do
+        backpack.blacklist = backpack.blacklist or {}
+        backpack.blacklist[itemName] = true
+        if backpack.container then
+            backpack.container.blacklist = backpack.blacklist
+        end
+    end
+
+    blacklist[itemName] = true
+
+    Backpacks[itemName] = {
+        slots = tonumber(properties.slots) or 1,
+        maxWeight = NormalizeBackpackWeight(properties.maxWeight),
+        gridWidth = tonumber(properties.gridWidth) or 5,
+        gridHeight = tonumber(properties.gridHeight) or 4,
+        blacklist = blacklist,
+        whitelist = ProcessBackpackFilter(properties.whitelist),
+    }
+end
+
+SetBackpackProperties('backpack_small', {
+    slots = 10,
+    maxWeight = 5000,
+    gridWidth = 5,
+    gridHeight = 3,
+})
+
+SetBackpackProperties('backpack_medium', {
+    slots = 20,
+    maxWeight = 15000,
+    gridWidth = 6,
+    gridHeight = 4,
+})
+
+SetBackpackProperties('backpack_large', {
+    slots = 30,
+    maxWeight = 30000,
+    gridWidth = 8,
+    gridHeight = 5,
+})
 
 local function Debug(level, msg)
     if not Config.Debug and level ~= 'Error' then return end
@@ -1136,6 +1224,169 @@ local function AddItemStack(src, itemData, x, y)
     return true
 end
 
+local function GenerateBackpackSlot()
+    return ('bp_%x_%x'):format(GetGameTimer(), math.random(0x1000, 0xFFFF))
+end
+
+local function GetBackpackProperties(itemName)
+    return type(itemName) == 'string' and Backpacks[itemName] or nil
+end
+
+local function GetBackpackWeight(items)
+    local weight = 0.0
+    for _, item in ipairs(items or {}) do
+        local data = GetItemData(item.name)
+        if data then
+            weight = weight + ((tonumber(data.weight) or 0) * (tonumber(item.count) or 0))
+        end
+    end
+    return weight
+end
+
+local function GetBackpackUsedSlots(items)
+    local count = 0
+    for _, item in ipairs(items or {}) do
+        if item.name and (tonumber(item.count) or 0) > 0 then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function IsBackpackItemAllowed(backpack, itemName)
+    if not backpack or type(itemName) ~= 'string' then return false end
+    if backpack.whitelist and not backpack.whitelist[itemName] then return false end
+    if backpack.blacklist and backpack.blacklist[itemName] then return false end
+    return true
+end
+
+local function IsBackpackSpotFree(items, itemName, x, y, backpack, ignoreSlot)
+    x = tonumber(x)
+    y = tonumber(y)
+    if not x or not y then return false end
+
+    local data = GetItemData(itemName) or {}
+    local size = data.size or {}
+    local itemW = tonumber(size.w) or 1
+    local itemH = tonumber(size.h) or 1
+    local gridW = tonumber(backpack.gridWidth) or 5
+    local gridH = tonumber(backpack.gridHeight) or 4
+
+    if x < 1 or y < 1 or (x + itemW - 1) > gridW or (y + itemH - 1) > gridH then
+        return false
+    end
+
+    for index, stored in ipairs(items or {}) do
+        if tostring(stored.slot) ~= tostring(ignoreSlot) then
+            local storedData = GetItemData(stored.name) or {}
+            local storedSize = storedData.size or {}
+            local storedW = tonumber(storedSize.w) or 1
+            local storedH = tonumber(storedSize.h) or 1
+            local storedX = tonumber(stored.x) or (((index - 1) % gridW) + 1)
+            local storedY = tonumber(stored.y) or (math.floor((index - 1) / gridW) + 1)
+
+            local overlapsX = not ((x + itemW - 1) < storedX or x > (storedX + storedW - 1))
+            local overlapsY = not ((y + itemH - 1) < storedY or y > (storedY + storedH - 1))
+            if overlapsX and overlapsY then
+                return false
+            end
+        end
+    end
+
+    return true
+end
+
+local function FindBackpackEntry(items, backpackSlot)
+    local wantedSlot = tostring(backpackSlot)
+    for index, item in ipairs(items or {}) do
+        if tostring(item.slot) == wantedSlot then
+            return item, index
+        end
+    end
+end
+
+local function BuildBackpackItems(items, gridWidth)
+    local list = {}
+    gridWidth = tonumber(gridWidth) or 5
+
+    for index, item in ipairs(items or {}) do
+        if item.name and (tonumber(item.count) or 0) > 0 then
+            list[#list + 1] = {
+                slot = item.slot,
+                stashSlot = item.slot,
+                name = item.name,
+                count = tonumber(item.count) or 1,
+                x = tonumber(item.x) or (((index - 1) % gridWidth) + 1),
+                y = tonumber(item.y) or (math.floor((index - 1) / gridWidth) + 1),
+                metadata = ShallowCopy(item.metadata or {}),
+            }
+        end
+    end
+
+    return list
+end
+
+local function BuildBackpackPayload(src, backpackItem)
+    local inv = Inventories[src]
+    if not inv or not backpackItem then return nil end
+
+    local backpack = GetBackpackProperties(backpackItem.name)
+    if not backpack then return nil end
+
+    backpackItem.metadata = EnsureItemMetadata(backpackItem.name, backpackItem.metadata)
+    backpackItem.metadata.containerItems = backpackItem.metadata.containerItems or {}
+
+    if ApplyDecayToItems(backpackItem.metadata.containerItems) then
+        SaveInventory(src, false)
+    end
+
+    return {
+        items = inv.items,
+        weight = inv.weight,
+        maxWeight = inv.maxWeight,
+        grid = { w = Config.GridWidth, h = Config.GridHeight },
+        itemsData = GetAllItemsData(),
+        groundItems = BuildBackpackItems(backpackItem.metadata.containerItems, backpack.gridWidth),
+        isStash = true,
+        isBackpack = true,
+        stashId = 'backpack:' .. tostring(backpackItem.slot),
+        stashName = (GetItemData(backpackItem.name) and GetItemData(backpackItem.name).label) or 'Backpack',
+        backpackSlot = backpackItem.slot,
+        backpackWeight = GetBackpackWeight(backpackItem.metadata.containerItems),
+        backpackMaxWeight = backpack.maxWeight,
+        backpackSlots = backpack.slots,
+        backpackUsedSlots = GetBackpackUsedSlots(backpackItem.metadata.containerItems),
+        backpackGrid = { w = backpack.gridWidth, h = backpack.gridHeight },
+    }
+end
+
+local function OpenBackpack(src, itemName, slotId)
+    local inv = Inventories[src]
+    if not inv then return end
+
+    local item = FindInventoryItem(inv, itemName, slotId)
+    if not item then
+        Notify(src, 'Backpack tidak ditemukan.', 'error')
+        return
+    end
+
+    local payload = BuildBackpackPayload(src, item)
+    if not payload then
+        Notify(src, 'Item ini bukan backpack.', 'error')
+        return
+    end
+
+    SaveInventory(src, false)
+    TriggerClientEvent('corex-inventory:client:open', src, payload)
+end
+
+local function RefreshBackpack(src, backpackItem)
+    local payload = BuildBackpackPayload(src, backpackItem)
+    if payload then
+        TriggerClientEvent('corex-inventory:client:updateBackpack', src, payload)
+    end
+end
+
 RegisterNetEvent('corex-inventory:server:load', function()
     LoadInventory(source)
 end)
@@ -1334,6 +1585,11 @@ RegisterNetEvent('corex-inventory:server:use', function(itemName, slotId)
     itemData.ammo = itemData.metadata.ammo
     itemName = item.name
 
+    if GetBackpackProperties(itemName) then
+        OpenBackpack(src, itemName, item.slot)
+        return
+    end
+
     TriggerClientEvent('corex-inventory:client:useItem', src, itemName, itemData)
 end)
 
@@ -1351,6 +1607,160 @@ end)
 RegisterNetEvent('corex-inventory:server:pickup', function(dropId, x, y)
     if type(dropId) ~= 'string' then return end
     PickupItem(source, dropId, x or 1, y or 1)
+end)
+
+RegisterNetEvent('corex-inventory:server:backpackDeposit', function(backpackSlot, inventorySlot, amount, backpackX, backpackY)
+    local src = source
+    if backpackSlot == nil or inventorySlot == nil then return end
+
+    amount = math.floor(tonumber(amount) or 0)
+    if amount < 1 then return end
+
+    if not TrySetBusy(src) then
+        Notify(src, 'Inventory sedang diproses, coba lagi.', 'error')
+        return
+    end
+
+    local inv = Inventories[src]
+    if not inv then
+        ClearBusy(src)
+        return
+    end
+
+    local backpackItem = FindInventoryItem(inv, nil, backpackSlot)
+    local backpack = backpackItem and GetBackpackProperties(backpackItem.name)
+    if not backpack then
+        ClearBusy(src)
+        Notify(src, 'Backpack tidak ditemukan.', 'error')
+        return
+    end
+
+    if tostring(backpackSlot) == tostring(inventorySlot) then
+        ClearBusy(src)
+        Notify(src, 'Backpack tidak bisa dimasukkan ke dirinya sendiri.', 'error')
+        return
+    end
+
+    local inventoryItem = FindInventoryItem(inv, nil, inventorySlot)
+    if not inventoryItem or (tonumber(inventoryItem.count) or 0) < amount then
+        ClearBusy(src)
+        Notify(src, 'Item tidak cukup atau gagal dipindahkan.', 'error')
+        return
+    end
+
+    if not IsBackpackItemAllowed(backpack, inventoryItem.name) then
+        ClearBusy(src)
+        Notify(src, 'Item ini tidak bisa dimasukkan ke backpack.', 'error')
+        return
+    end
+
+    backpackItem.metadata = EnsureItemMetadata(backpackItem.name, backpackItem.metadata)
+    local items = backpackItem.metadata.containerItems or {}
+    backpackItem.metadata.containerItems = items
+
+    if GetBackpackUsedSlots(items) >= backpack.slots then
+        ClearBusy(src)
+        Notify(src, 'Slot backpack penuh.', 'error')
+        return
+    end
+
+    local itemData = GetItemData(inventoryItem.name)
+    local nextWeight = GetBackpackWeight(items) + ((itemData and itemData.weight or 0) * amount)
+    if nextWeight > backpack.maxWeight then
+        ClearBusy(src)
+        Notify(src, 'Backpack terlalu berat.', 'error')
+        return
+    end
+
+    if not IsBackpackSpotFree(items, inventoryItem.name, backpackX, backpackY, backpack) then
+        ClearBusy(src)
+        Notify(src, 'Slot backpack terisi.', 'error')
+        return
+    end
+
+    local removed, removedItem = RemoveItemFromSlot(src, inventorySlot, amount)
+    if removed ~= true or not removedItem then
+        ClearBusy(src)
+        Notify(src, 'Item gagal dipindahkan.', 'error')
+        return
+    end
+
+    items[#items + 1] = {
+        slot = GenerateBackpackSlot(),
+        name = removedItem.name,
+        count = removedItem.count,
+        x = tonumber(backpackX),
+        y = tonumber(backpackY),
+        metadata = removedItem.metadata or {},
+    }
+
+    inv.weight = CalculateWeight(inv.items)
+    SaveInventory(src)
+    Notify(src, ('Menyimpan %dx %s.'):format(amount, (itemData and itemData.label) or removedItem.name), 'success')
+    RefreshBackpack(src, backpackItem)
+    ClearBusy(src)
+end)
+
+RegisterNetEvent('corex-inventory:server:backpackWithdraw', function(backpackSlot, backpackItemSlot, amount, inventoryX, inventoryY)
+    local src = source
+    if backpackSlot == nil or backpackItemSlot == nil then return end
+
+    amount = math.floor(tonumber(amount) or 0)
+    if amount < 1 then return end
+
+    if not TrySetBusy(src) then
+        Notify(src, 'Inventory sedang diproses, coba lagi.', 'error')
+        return
+    end
+
+    local inv = Inventories[src]
+    if not inv then
+        ClearBusy(src)
+        return
+    end
+
+    local backpackItem = FindInventoryItem(inv, nil, backpackSlot)
+    local backpack = backpackItem and GetBackpackProperties(backpackItem.name)
+    if not backpack then
+        ClearBusy(src)
+        Notify(src, 'Backpack tidak ditemukan.', 'error')
+        return
+    end
+
+    backpackItem.metadata = EnsureItemMetadata(backpackItem.name, backpackItem.metadata)
+    local items = backpackItem.metadata.containerItems or {}
+    local stored, storedIndex = FindBackpackEntry(items, backpackItemSlot)
+    local storedCount = stored and (tonumber(stored.count) or 0) or 0
+
+    if storedCount < amount then
+        ClearBusy(src)
+        Notify(src, 'Stok backpack tidak cukup.', 'error')
+        return
+    end
+
+    local itemData = {
+        name = stored.name,
+        count = amount,
+        metadata = stored.metadata or {},
+    }
+
+    local added, addErr = AddItemStack(src, itemData, tonumber(inventoryX), tonumber(inventoryY))
+    if added ~= true then
+        ClearBusy(src)
+        Notify(src, addErr or 'Inventory kamu penuh.', 'error')
+        return
+    end
+
+    stored.count = storedCount - amount
+    if stored.count <= 0 then
+        table.remove(items, storedIndex)
+    end
+
+    SaveInventory(src)
+    local data = GetItemData(itemData.name)
+    Notify(src, ('Mengambil %dx %s.'):format(amount, (data and data.label) or itemData.name), 'success')
+    RefreshBackpack(src, backpackItem)
+    ClearBusy(src)
 end)
 
 RegisterNetEvent('corex-inventory:server:split', function(itemName, count, slotId)
@@ -2001,6 +2411,8 @@ exports('PickupItem',       PickupItem)
 exports('UpdateItemMeta',   UpdateItemMeta)
 exports('GetItemMeta',      GetItemMeta)
 exports('ApplyDecayToItems', ApplyDecayToItems)
+exports('RegisterBackpack', SetBackpackProperties)
+exports('GetBackpacks', function() return Backpacks end)
 exports('HasItem', function(src, itemName, count)
     count = count or 1
     local inv = Inventories[src]
