@@ -1,3 +1,8 @@
+--[[
+    COREX Inventory - Client Side (v2.0)
+    Uses COREX Framework with Player Bridge API
+]]
+
 local function DebugPrint(msg)
     if Config and Config.Debug then
         print(msg)
@@ -344,8 +349,8 @@ local function GetNearbyGroundItems()
 end
 
 local function OpenInventory(data)
-    if isOpen then return end
     isOpen = true
+    isShopOpen = data.isShop == true
     isStashOpen = data.isStash == true
 
     if not data.isShop and not data.isContainer and not data.isStash then
@@ -477,6 +482,17 @@ end)
 RegisterNetEvent('corex-inventory:client:updateStash', function(data)
     if isOpen and isStashOpen then
         data.isStash = true
+        SendNUIMessage({
+            action = 'update',
+            inventory = data
+        })
+    end
+end)
+
+RegisterNetEvent('corex-inventory:client:updateBackpack', function(data)
+    if isOpen and isStashOpen then
+        data.isStash = true
+        data.isBackpack = true
         SendNUIMessage({
             action = 'update',
             inventory = data
@@ -617,7 +633,10 @@ RegisterNUICallback('stashDepositItem', function(data, cb)
         local x = math.max(1, math.min(8, math.floor(tonumber(data.x) or 1)))
         local y = math.max(1, math.min(10, math.floor(tonumber(data.y) or 1)))
         local stashId = tostring(data.stashId)
-        if stashId:sub(1, 8) == 'vehitem:' then
+        if stashId:sub(1, 9) == 'backpack:' then
+            local backpackSlot = stashId:sub(10)
+            TriggerServerEvent('corex-inventory:server:backpackDeposit', backpackSlot, data.slot, data.count or 1, x, y)
+        elseif stashId:sub(1, 8) == 'vehitem:' then
             TriggerServerEvent('xian_vehitems:trunk:deposit', stashId, data.slot, data.count or 1, x, y)
         else
             TriggerServerEvent('xian_modules:stash:deposit', stashId, data.slot, data.count or 1, x, y)
@@ -631,7 +650,10 @@ RegisterNUICallback('stashWithdrawItem', function(data, cb)
         local x = math.max(1, math.min(8, math.floor(tonumber(data.x) or 1)))
         local y = math.max(1, math.min(10, math.floor(tonumber(data.y) or 1)))
         local stashId = tostring(data.stashId)
-        if stashId:sub(1, 8) == 'vehitem:' then
+        if stashId:sub(1, 9) == 'backpack:' then
+            local backpackSlot = stashId:sub(10)
+            TriggerServerEvent('corex-inventory:server:backpackWithdraw', backpackSlot, data.stashSlot, data.count or 1, x, y)
+        elseif stashId:sub(1, 8) == 'vehitem:' then
             TriggerServerEvent('xian_vehitems:trunk:withdraw', stashId, data.stashSlot, data.count or 1, x, y)
         else
             TriggerServerEvent('xian_modules:stash:withdraw', stashId, data.stashSlot, data.count or 1, x, y)
@@ -985,7 +1007,7 @@ local function UseQuickSlot(slotNum)
 
     local mapping = hotkeyMapping[slotNum]
     if mapping and mapping.item then
-        TriggerEvent('corex-inventory:client:useItem', mapping.item.name, mapping.item)
+        TriggerServerEvent('corex-inventory:server:use', mapping.item.name, mapping.item.slot)
     end
 end
 
