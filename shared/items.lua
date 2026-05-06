@@ -741,6 +741,27 @@ Items = {
         image = 'banshee3_car.png',
         rarity = 'mythic'
     	},
+        
+    ['rental_bicycle'] = {
+        label = 'Bicycle',
+        weight = 8.0,
+        size = {w = 2, h = 2},
+        stackable = false,
+        usable = true,
+        image = 'default.png',
+        iconMetadataKey = 'model',
+        rarity = 'common'
+    },
 
+    ['portable_vehicle'] = {
+        label = 'Vehicle',
+        weight = 12.0,
+        size = {w = 2, h = 2},
+        stackable = false,
+        usable = true,
+        image = 'default.png',
+        iconMetadataKey = 'model',
+        rarity = 'rare'
+    },
 
 }
