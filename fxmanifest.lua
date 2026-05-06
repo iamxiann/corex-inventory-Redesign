@@ -5,7 +5,7 @@ lua54 'yes'
 name 'corex-inventory'
 description 'COREX Framework - Inventory System'
 author 'ABUGIZA'
-version '1.0.6'
+version '1.0.0'
 
 shared_scripts {
     'config.lua',
@@ -20,6 +20,7 @@ server_scripts {
 
 client_scripts {
     'client/main.lua',
+    'client/rental_bicycle.lua',
     'client/weapons.lua',
     'client/shops.lua'
 }
