@@ -29,6 +29,17 @@ Config.GiveDistance = 5.0
 Config.PropSyncInterval = 10000
 Config.MarkerCacheInterval = 100
 
+Config.PortableVehicles = {
+    Enabled = true,
+    ItemName = 'portable_vehicle',
+    DefaultPortable = true,
+    PickupDistance = 4.5,
+    RegisterDistance = 18.0,
+    DeployTimeout = 16000,
+    SpawnDistance = 3.8,
+    AutoEnterOnDeploy = true,
+    ReplacePreviousActive = false
+}
 
 -- WEAPON RECOIL SYSTEM 
 
